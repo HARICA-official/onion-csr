@@ -16,13 +16,13 @@ params = {
   'priv-key': 'privkey.pem'
 }
 OptionParser.new do |opts|
-  opts.banner = "Usage:  #{$PROGRAM_NAME} -n 4841524943414752 [other options]"
+  opts.banner = "Usage:  #{$PROGRAM_NAME} -n 4841524943413C336F6E696F6E73 [other options]"
 
   opts.on('-d', '--hs-dir HS-directory', 'Path to the hidden service directory')
 
   opts.on('-f', '--dns-names FQDNs', 'Comma-separated list of FQDNs to include as DNSNames')
 
-  opts.on('-n', '--ca-nonce NONCE', 'CA provided signing nonce in HEX e.g 4841524943414752')
+  opts.on('-n', '--ca-nonce NONCE', 'CA provided signing nonce in HEX e.g 4841524943413C336F6E696F6E73')
 
   opts.on('-p', '--priv-key privkey.pem', 'File to read an existing private key or to write a new one')
 
