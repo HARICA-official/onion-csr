@@ -20,8 +20,6 @@ A tool that generates CSRs that are appropriate for use with method 2.b of appen
 ./onion-csr.rb -h
 Usage:  ./onion-csr.rb -n 4841524943413C336F6E696F6E73 [other options]
     -d, --hs-dir HS-directory        Path to the hidden service directory
-    -f, --dns-names FQDNs            Comma-separated list of FQDNs to include as DNSNames
     -n, --ca-nonce NONCE             CA provided signing nonce in HEX e.g 4841524943413C336F6E696F6E73
-    -p, --priv-key privkey.pem       File to read an existing private key or to write a new one
     -h, --help                       Prints this help
 ```
