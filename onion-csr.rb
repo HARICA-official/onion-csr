@@ -15,7 +15,7 @@ params = {
   'hs-dir': '/var/lib/tor/hidden_service'
 }
 OptionParser.new do |opts|
-  opts.banner = "Usage:  #{$PROGRAM_NAME} -n 4841524943413C336F6E696F6E73 [other options]"
+  opts.banner = "Usage:  #{$PROGRAM_NAME} -n NONCE [other options]"
 
   opts.on('-d', '--hs-dir HS-directory', 'Path to the hidden service directory')
 
