@@ -1,7 +1,7 @@
 #!/usr/bin/ruby
 
-# SPDX-FileCopyrightText: 2021 Antonios Eleftheriadis <antoniose@harica.gr>
-# SPDX-FileCopyrightText: 2021 HARICA <ca@harica.gr>
+# SPDX-FileCopyrightText: 2021-2024 Antonios Eleftheriadis <antonisel@harica.gr>
+# SPDX-FileCopyrightText: 2021-2024 HARICA <ca@harica.gr>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # frozen_string_literal: true
@@ -37,64 +37,77 @@ hostname = File.read("#{params[:'hs-dir']}/hostname").strip
 hs_private_key = File.read("#{params[:'hs-dir']}/hs_ed25519_secret_key")[32..-1]
 hs_public_key = File.read("#{params[:'hs-dir']}/hs_ed25519_public_key")[32..-1]
 
-# Create CSR
-req = OpenSSL::X509::Request.new
+# Create AlgorithmIdentifier for Ed25519 public keys and signatures
+# ASN.1 definition of AlgorithmIdentifier from RFC 2986
+# AlgorithmIdentifier {ALGORITHM:IOSet } ::= SEQUENCE {
+#      algorithm  ALGORITHM.&id({IOSet}),
+#      parameters ALGORITHM.&Type({IOSet}{@algorithm}) OPTIONAL
+# }
+alg_id = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ObjectId('ED25519')])
 
-# Add nonce attributes
-req.add_attribute OpenSSL::X509::Attribute.new '2.23.140.41',
-                                               OpenSSL::ASN1::Set(
-                                                 [
-                                                   OpenSSL::ASN1::OctetString([params[:'ca-nonce']].pack('H*'))
-                                                 ]
-                                               )
+# Create SubjectPublicKeyInfo
+# ASN.1 definition of SubjectPublicKeyInfo from RFC 2986
+# SubjectPublicKeyInfo {ALGORITHM: IOSet} ::= SEQUENCE {
+#      algorithm        AlgorithmIdentifier {{IOSet}},
+#      subjectPublicKey BIT STRING
+# }
+spki = OpenSSL::ASN1::Sequence([alg_id, OpenSSL::ASN1::BitString(hs_public_key)])
+
+# Create nonce attributes
+ca_nonce = OpenSSL::X509::Attribute.new '2.23.140.41',
+                                        OpenSSL::ASN1::Set(
+                                          [
+                                            OpenSSL::ASN1::OctetString([params[:'ca-nonce']].pack('H*'))
+                                          ]
+                                        )
 applicant_signing_nonce = SecureRandom.bytes 10 # The BRs require at least 64bits of entropy, so we generate 80
-req.add_attribute OpenSSL::X509::Attribute.new '2.23.140.42',
-                                               OpenSSL::ASN1::Set([OpenSSL::ASN1::OctetString(applicant_signing_nonce)])
+applicant_signing_nonce = OpenSSL::X509::Attribute.new '2.23.140.42',
+                                                       OpenSSL::ASN1::Set(
+                                                         [
+                                                           OpenSSL::ASN1::OctetString(applicant_signing_nonce)
+                                                         ]
+                                                       )
 
-# Add SAN extension
-req.add_attribute OpenSSL::X509::Attribute.new 'extReq', OpenSSL::ASN1::Set(
+# Create SAN extension
+san = OpenSSL::X509::Attribute.new 'extReq', OpenSSL::ASN1::Set(
   [
     OpenSSL::ASN1::Sequence([OpenSSL::X509::ExtensionFactory.new.create_extension('subjectAltName', "DNS:#{hostname}")])
   ]
 )
 
-# Decode the CSR and get the certificationRequestInfo
-certificate_request = OpenSSL::ASN1.decode req
-# ASN.1 definition of CertificationRequest from RFC 2986
-# CertificationRequest ::= SEQUENCE {
-#      certificationRequestInfo CertificationRequestInfo,
-#      signatureAlgorithm AlgorithmIdentifier{{ SignatureAlgorithms }},
-#      signature          BIT STRING
-# }
-certification_request_info = certificate_request.value[0]
-
-# Add the public key
-# ASN.1 definitions of CertificationRequestInfo, SubjectPublicKeyInfo and AlgorithmIdentifier from RFC 2986
+# Create certificationRequestInfo
+# ASN.1 definitions of CertificationRequestInfo and Attributes from RFC 2986
 # CertificationRequestInfo ::= SEQUENCE {
 #      version       INTEGER { v1(0) } (v1,...),
 #      subject       Name,
 #      subjectPKInfo SubjectPublicKeyInfo{{ PKInfoAlgorithms }},
 #      attributes    [0] Attributes{{ CRIAttributes }}
 # }
-# SubjectPublicKeyInfo {ALGORITHM: IOSet} ::= SEQUENCE {
-#      algorithm        AlgorithmIdentifier {{IOSet}},
-#      subjectPublicKey BIT STRING
-# }
-# AlgorithmIdentifier {ALGORITHM:IOSet } ::= SEQUENCE {
-#      algorithm  ALGORITHM.&id({IOSet}),
-#      parameters ALGORITHM.&Type({IOSet}{@algorithm}) OPTIONAL
-# }
-certification_request_info.value[2].value[0].value << OpenSSL::ASN1::ObjectId('ED25519')
-certification_request_info.value[2].value[1].value = hs_public_key
+# Attributes { ATTRIBUTE:IOSet } ::= SET OF Attribute{{ IOSet }}
+certification_request_info = OpenSSL::ASN1::Sequence(
+  [
+    OpenSSL::ASN1::Integer(0), OpenSSL::X509::Name.new, spki,
+    OpenSSL::ASN1::Set([applicant_signing_nonce, ca_nonce, san], 0, :IMPLICIT)
+  ]
+)
 
 # Sign DER certificationRequestInfo with Ed25519
 der_cri = certification_request_info.to_der
 sig = FFI::Buffer.new 64
 Ed25519.ed25519_sign sig, der_cri, der_cri.bytesize, hs_public_key, hs_private_key
 
-# Add CSR signature
-certificate_request.value[1].value << OpenSSL::ASN1::ObjectId('ED25519')
-certificate_request.value[2].value = sig.read_bytes 64
+# Create CSR
+# ASN.1 definition of CertificationRequest from RFC 2986
+# CertificationRequest ::= SEQUENCE {
+#      certificationRequestInfo CertificationRequestInfo,
+#      signatureAlgorithm AlgorithmIdentifier{{ SignatureAlgorithms }},
+#      signature          BIT STRING
+# }
+certificate_request = OpenSSL::ASN1::Sequence(
+  [
+    certification_request_info, alg_id, OpenSSL::ASN1::BitString(sig.read_bytes(64))
+  ]
+)
 
 req = OpenSSL::X509::Request.new certificate_request
 puts req
